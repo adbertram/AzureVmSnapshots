@@ -4,7 +4,7 @@ function New-AzureRmVmSnapshot {
 	(
 		[Parameter(Mandatory)]
 		[ValidateNotNullOrEmpty()]
-		[string]$VmName,
+		[string[]]$VmName,
  
 		[Parameter(Mandatory)]
 		[ValidateNotNullOrEmpty()]
@@ -16,33 +16,40 @@ function New-AzureRmVmSnapshot {
 	)
  
 	$ErrorActionPreference = 'Stop'
- 
-	$vm = Get-AzureRmVm -ResourceGroup $ResourceGroup -Name $VmName
-	$stopParams = @{
-		ResourceGroupName = $ResourceGroup
-		Force             = $true
-	}
-	if ($PSCmdlet.ShouldProcess("Azure VM [$($VmName)]", 'Stop')) {
-		try {
-			Write-Verbose -Message "Stopping Azure VM [$($VmName)]..."
-			$null = $vm | Stop-AzureRmVm -ResourceGroupName $ResourceGroup -Force
+	foreach ($name in $VMName) {
+		$scriptBlock = {
+			param($ResourceGroup, $VmName, $SnapshotName, $VerbosePreference)
 
-			$diskName = $vm.StorageProfile.OSDisk.Name
-			$osDisk = Get-AzureRmDisk -ResourceGroupName $ResourceGroup -DiskName $diskname
-			$snapConfig = New-AzureRmSnapshotConfig -SourceUri $osDisk.Id -CreateOption Copy -Location $vm.Location 
-			Write-Verbose -Message "Creating snapshot..."
-			$null = New-AzureRmSnapshot -Snapshot $snapConfig -SnapshotName $SnapshotName -ResourceGroupName $ResourceGroup
-		} catch {
-			throw $_.Exception.Message
-		} finally {
-			Write-Verbose -Message "Starting Azure VM back up..."
-			$null = $vm | Start-AzureRmVm
-			[pscustomobject]@{
-				'VMName'       = $VmName
-				'SnapshotName' = $SnapshotName
+			$vm = Get-AzureRmVm -ResourceGroup $ResourceGroup -Name $VmName
+			$stopParams = @{
+				ResourceGroupName = $ResourceGroup
+				Force             = $true
+			}
+			try {
+				Write-Verbose -Message "Stopping Azure VM [$($VmName)]..."
+				$null = $vm | Stop-AzureRmVm -ResourceGroupName $ResourceGroup -Force
+
+				$diskName = $vm.StorageProfile.OSDisk.Name
+				$osDisk = Get-AzureRmDisk -ResourceGroupName $ResourceGroup -DiskName $diskname
+				$snapConfig = New-AzureRmSnapshotConfig -SourceUri $osDisk.Id -CreateOption Copy -Location $vm.Location 
+				Write-Verbose -Message "Creating snapshot..."
+				$null = New-AzureRmSnapshot -Snapshot $snapConfig -SnapshotName $SnapshotName -ResourceGroupName $ResourceGroup
+			} catch {
+				throw $_.Exception.Message
+			} finally {
+				Write-Verbose -Message "Starting Azure VM back up..."
+				$null = $vm | Start-AzureRmVm
+				[pscustomobject]@{
+					'VMName'       = $VmName
+					'SnapshotName' = $SnapshotName
+				}
 			}
 		}
+		$jobs = @()
+		$jobs += Start-Job -ScriptBlock $scriptBlock -ArgumentList @($ResourceGroup, $name, $SnapshotName, $VerbosePreference)
 	}
+	Write-Verbose -Message 'Executed all snapshot operations. Waiting on jobs to finish...'
+	$jobs | Wait-Job | Receive-Job
 }
  
 function Restore-AzureRmVmSnapshot {

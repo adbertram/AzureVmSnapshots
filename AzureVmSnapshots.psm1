@@ -81,7 +81,6 @@ function Restore-AzureRmVmSnapshot {
 		throw "Could not find snapshot [$($SnapshotName)]."
 	}
 	if ($PSCmdlet.ShouldProcess("Snapshot", 'Restore')) {
-		Write-Verbose -Message 'Creating the snapshot...'
 		$diskconf = New-AzureRmDiskConfig -AccountType $storagetype -Location $oldOsdisk.Location -SourceResourceId $snapshot.Id -CreateOption Copy
 		Write-Verbose -Message 'Creating new disk...'
 		$newDisk = New-AzureRmDisk -Disk $diskconf -ResourceGroupName $resourceGroup -DiskName "$($vm.Name)-$((New-Guid).ToString())"

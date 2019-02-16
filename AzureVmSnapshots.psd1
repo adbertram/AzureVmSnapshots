@@ -1,6 +1,6 @@
 @{
 	RootModule        = 'AzureVmSnapshots.psm1'
-	ModuleVersion     = '0.1.3'
+	ModuleVersion     = '0.1.4'
 	GUID              = 'a331209b-755a-4109-8f43-7849ab9e71d1'
 	Author            = 'Adam Bertram'
 	CompanyName       = 'TechSnips, LLC'

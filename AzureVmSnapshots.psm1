@@ -8,17 +8,15 @@ function New-AzureRmVmSnapshot {
  
 		[Parameter(Mandatory)]
 		[ValidateNotNullOrEmpty()]
-		[string]$ResourceGroup,
- 
-		[Parameter()]
-		[ValidateNotNullOrEmpty()]
-		[string]$SnapshotName = "$VMName-$(Get-Date -UFormat '%Y%m%d%H%M%S')"
+		[string]$ResourceGroup
 	)
  
 	$ErrorActionPreference = 'Stop'
 	foreach ($name in $VMName) {
 		$scriptBlock = {
-			param($ResourceGroup, $VmName, $SnapshotName, $VerbosePreference)
+			param($ResourceGroup, $VmName, $VerbosePreference)
+
+			$snapshotName = "$VMName-$(Get-Date -UFormat '%Y%m%d%H%M%S')"
 
 			$vm = Get-AzureRmVm -ResourceGroup $ResourceGroup -Name $VmName
 			$stopParams = @{
@@ -33,7 +31,7 @@ function New-AzureRmVmSnapshot {
 				$osDisk = Get-AzureRmDisk -ResourceGroupName $ResourceGroup -DiskName $diskname
 				$snapConfig = New-AzureRmSnapshotConfig -SourceUri $osDisk.Id -CreateOption Copy -Location $vm.Location 
 				Write-Verbose -Message "Creating snapshot..."
-				$null = New-AzureRmSnapshot -Snapshot $snapConfig -SnapshotName $SnapshotName -ResourceGroupName $ResourceGroup
+				$null = New-AzureRmSnapshot -Snapshot $snapConfig -SnapshotName $snapshotName -ResourceGroupName $ResourceGroup
 			} catch {
 				throw $_.Exception.Message
 			} finally {
@@ -41,12 +39,12 @@ function New-AzureRmVmSnapshot {
 				$null = $vm | Start-AzureRmVm
 				[pscustomobject]@{
 					'VMName'       = $VmName
-					'SnapshotName' = $SnapshotName
+					'SnapshotName' = $snapshotName
 				}
 			}
 		}
 		$jobs = @()
-		$jobs += Start-Job -ScriptBlock $scriptBlock -ArgumentList @($ResourceGroup, $name, $SnapshotName, $VerbosePreference)
+		$jobs += Start-Job -ScriptBlock $scriptBlock -ArgumentList @($ResourceGroup, $name, $VerbosePreference)
 	}
 	Write-Verbose -Message 'Executed all snapshot operations. Waiting on jobs to finish...'
 	$jobs | Wait-Job | Receive-Job

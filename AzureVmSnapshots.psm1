@@ -11,10 +11,11 @@ function New-AzureRmVmSnapshot {
 		[string]$ResourceGroup
 	)
  
-	$ErrorActionPreference = 'Stop'
 	foreach ($name in $VMName) {
 		$scriptBlock = {
-			param($ResourceGroup, $VmName, $VerbosePreference)
+			param($ResourceGroup, $VmName)
+
+			$ErrorActionPreference = 'Stop'
 
 			$snapshotName = "$VMName-$(Get-Date -UFormat '%Y%m%d%H%M%S')"
 
@@ -44,7 +45,7 @@ function New-AzureRmVmSnapshot {
 			}
 		}
 		$jobs = @()
-		$jobs += Start-Job -ScriptBlock $scriptBlock -ArgumentList @($ResourceGroup, $name, $VerbosePreference)
+		$jobs += Start-Job -ScriptBlock $scriptBlock -ArgumentList @($ResourceGroup, $name)
 	}
 	Write-Verbose -Message 'Executed all snapshot operations. Waiting on jobs to finish...'
 	$jobs | Wait-Job | Receive-Job

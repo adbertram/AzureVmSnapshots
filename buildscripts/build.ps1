@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 try {
 
-	$manifestFilePath = "$env:APPVEYOR_BUILD_FOLDER\BlogReader.psd1"
+	$manifestFilePath = "$env:APPVEYOR_BUILD_FOLDER\AzureVmSnapshots.psd1"
 	$manifestContent = Get-Content -Path $manifestFilePath -Raw
 
 	## Update the module version based on the build version and limit exported functions

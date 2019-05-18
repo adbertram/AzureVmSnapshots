@@ -2,16 +2,16 @@ $ErrorActionPreference = 'Stop'
 
 try {
 	## Don't upload the build scripts and appveyor.yml to PowerShell Gallery
-	$tempmoduleFolderPath = "$env:Temp\BlogReader"
+	$tempmoduleFolderPath = "$env:Temp\AzVmSnapShots"
 	$null = mkdir $tempmoduleFolderPath
 
 	## Remove all of the files/folders to exclude out of the main folder
 	$excludeFromPublish = @(
-		'BlogReader\\buildscripts'
-		'BlogReader\\appveyor\.yml'
-		'BlogReader\\\.git'
-		'BlogReader\\\.nuspec'
-		'BlogReader\\README\.md'
+		'AzVmSnapShots\\buildscripts'
+		'AzVmSnapShots\\appveyor\.yml'
+		'AzVmSnapShots\\\.git'
+		'AzVmSnapShots\\\.nuspec'
+		'AzVmSnapShots\\README\.md'
 
 	)
 	$exclude = $excludeFromPublish -join '|'

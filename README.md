@@ -1,3 +1,3 @@
 # AzureVMSnapshots
 
-[![Build status](https://ci.appveyor.com/api/projects/status/2cowwl34qsjw9m34?svg=true)]()
+[![Build status](https://ci.appveyor.com/api/projects/status/f35ulgto5tay5ok0?svg=true)](https://ci.appveyor.com/project/adbertram/azurevmsnapshots)

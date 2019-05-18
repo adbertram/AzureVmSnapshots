@@ -1,4 +1,4 @@
-function New-AzureRmVmSnapshot {
+function New-AzVmSnapshot {
 	[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 	param
 	(
@@ -8,36 +8,36 @@ function New-AzureRmVmSnapshot {
  
 		[Parameter(Mandatory)]
 		[ValidateNotNullOrEmpty()]
-		[string]$ResourceGroup
+		[string]$ResourceGroupName
 	)
  
 	foreach ($name in $VMName) {
 		$scriptBlock = {
-			param($ResourceGroup, $VmName)
+			param($ResourceGroupName, $VmName)
 
 			$ErrorActionPreference = 'Stop'
 
 			$snapshotName = "$VMName-$(Get-Date -UFormat '%Y%m%d%H%M%S')"
 
-			$vm = Get-AzureRmVm -ResourceGroup $ResourceGroup -Name $VmName
+			$vm = Get-AzVm -ResourceGroup $ResourceGroupName -Name $VmName
 			$stopParams = @{
-				ResourceGroupName = $ResourceGroup
+				ResourceGroupName = $ResourceGroupName
 				Force             = $true
 			}
 			try {
 				Write-Verbose -Message "Stopping Azure VM [$($VmName)]..."
-				$null = $vm | Stop-AzureRmVm -ResourceGroupName $ResourceGroup -Force
+				$null = $vm | Stop-AzVm -ResourceGroupName $ResourceGroupName -Force
 
 				$diskName = $vm.StorageProfile.OSDisk.Name
-				$osDisk = Get-AzureRmDisk -ResourceGroupName $ResourceGroup -DiskName $diskname
-				$snapConfig = New-AzureRmSnapshotConfig -SourceUri $osDisk.Id -CreateOption Copy -Location $vm.Location 
+				$osDisk = Get-AzDisk -ResourceGroupName $ResourceGroupName -DiskName $diskname
+				$snapConfig = New-AzSnapshotConfig -SourceUri $osDisk.Id -CreateOption Copy -Location $vm.Location 
 				Write-Verbose -Message "Creating snapshot..."
-				$null = New-AzureRmSnapshot -Snapshot $snapConfig -SnapshotName $snapshotName -ResourceGroupName $ResourceGroup
+				$null = New-AzSnapshot -Snapshot $snapConfig -SnapshotName $snapshotName -ResourceGroupName $ResourceGroupName
 			} catch {
 				throw $_.Exception.Message
 			} finally {
 				Write-Verbose -Message "Starting Azure VM back up..."
-				$null = $vm | Start-AzureRmVm
+				$null = $vm | Start-AzVm
 				[pscustomobject]@{
 					'VMName'       = $VmName
 					'SnapshotName' = $snapshotName
@@ -45,14 +45,77 @@ function New-AzureRmVmSnapshot {
 			}
 		}
 		$jobs = @()
-		$jobs += Start-Job -ScriptBlock $scriptBlock -ArgumentList @($ResourceGroup, $name)
+		$jobs += Start-Job -ScriptBlock $scriptBlock -ArgumentList @($ResourceGroupName, $name)
 	}
 	Write-Verbose -Message 'Executed all snapshot operations. Waiting on jobs to finish...'
 	$jobs | Wait-Job | Receive-Job
 }
  
-function Restore-AzureRmVmSnapshot {
-	[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+function Restore-AzVmSnapshot {
+	[CmdletBinding(DefaultParameterSetName = 'VM', SupportsShouldProcess, ConfirmImpact = 'High')]
+	param
+	(
+		[Parameter(Mandatory, ParameterSetName = 'VM')]
+		[ValidateNotNullOrEmpty()]
+		[string]$VmName,
+ 
+		[Parameter(Mandatory, ParameterSetName = 'VM')]
+		[ValidateNotNullOrEmpty()]
+		[string]$ResourceGroupName,
+ 
+		[Parameter(Mandatory, ValueFromPipeline, ParameterSetName = 'Snapshot')]
+		[ValidateNotNullOrEmpty()]
+		[Microsoft.Azure.Commands.Compute.Automation.Models.PSSnapshotList]$Snapshot,
+ 
+		[Parameter()]
+		[ValidateNotNullOrEmpty()]
+		[switch]$RemoveOriginalDisk
+	)
+ 
+	$ErrorActionPreference = 'Stop'
+	
+	if (-not $PSBoundParameters.ContainsKey('Snapshot')) {
+		## Find the VM
+		$vm = Get-AzVM -Name $VmName -ResourceGroupName $ResourceGroupName
+		if (-not ($Snapshot = Get-AzVmSnapshot -ResourceGroupName $ResourceGroupName -VMName $vm.Name)) {
+			throw "Could not find snapshot."
+		}
+	} else {
+		$vmName = ($Snapshot.Name -split '-')[0]
+		$ResourceGroupName = $Snapshot.ResourceGroupName
+		$vm = Get-AzVM -Name $VmName -ResourceGroupName $ResourceGroupName
+	}
+ 
+	## Find the OS disk on the VM to get the storage type
+	$osDiskName = $vm.StorageProfile.OsDisk.name
+	$oldOsDisk = Get-AzDisk -Name $osDiskName -ResourceGroupName $ResourceGroupName
+	
+	if ($PSCmdlet.ShouldProcess("Snapshot", 'Restore')) {
+		$diskconf = New-AzDiskConfig -AccountType $oldOsDisk.sku.name -Location $oldOsdisk.Location -SourceResourceId $Snapshot.Id -CreateOption Copy
+		Write-Verbose -Message 'Creating new disk...'
+		$newDisk = New-AzDisk -Disk $diskconf -ResourceGroupName $ResourceGroupName -DiskName "$($vm.Name)-$((New-Guid).ToString())"
+
+		# Set the VM configuration to point to the new disk
+		$null = Set-AzVMOSDisk -VM $vm -ManagedDiskId $newDisk.Id -Name $newDisk.Name
+
+		# Update the VM with the new OS disk
+		Write-Verbose -Message 'Updating VM...'
+		$null = Update-AzVM -ResourceGroupName $ResourceGroupName -VM $vm 
+
+		# Start the VM 
+		Write-Verbose -Message 'Starting VM...'
+		$null = Start-AzVM -Name $vm.Name -ResourceGroupName $ResourceGroupName
+
+		if ($RemoveOriginalDisk.IsPresent) {
+			if ($PSCmdlet.ShouldProcess("Disk $($oldOsDisk.Name)", 'Remove')) {
+				$null = Remove-AzDisk -ResourceGroupName $ResourceGroupName -DiskName $oldOsDisk.Name
+			}
+		}
+	}
+}
+
+function Get-AzVmSnapshot {
+	[CmdletBinding()]
 	param
 	(
 		[Parameter(Mandatory)]
@@ -61,51 +124,18 @@ function Restore-AzureRmVmSnapshot {
  
 		[Parameter(Mandatory)]
 		[ValidateNotNullOrEmpty()]
-		[string]$ResourceGroup,
- 
-		[Parameter(Mandatory)]
-		[ValidateNotNullOrEmpty()]
-		[string]$SnapshotName,
- 
-		[Parameter()]
-		[ValidateNotNullOrEmpty()]
-		[switch]$RemoveOriginalDisk
+		[string]$ResourceGroupName
 	)
  
 	$ErrorActionPreference = 'Stop'
  
 	## Find the VM
-	$vm = Get-AzureRmVM -Name $VmName -ResourceGroupName $ResourceGroup
+	$vm = Get-AzVM -Name $VmName -ResourceGroupName $ResourceGroupName
  
 	## Find the OS disk on the VM to get the storage type
 	$osDiskName = $vm.StorageProfile.OsDisk.name
-	$oldOsDisk = Get-AzureRmDisk -Name $osDiskName -ResourceGroupName $ResourceGroup
+	$oldOsDisk = Get-AzDisk -Name $osDiskName -ResourceGroupName $ResourceGroupName
 	$storageType = $oldOsDisk.sku.name
  
-	## Create the new disk from the snapshot
-	if (-not ($snapshot = Get-AzureRmSnapshot -ResourceGroupName $ResourceGroup | Where-Object { $_.Name -eq $SnapshotName })) {
-		throw "Could not find snapshot [$($SnapshotName)]."
-	}
-	if ($PSCmdlet.ShouldProcess("Snapshot", 'Restore')) {
-		$diskconf = New-AzureRmDiskConfig -AccountType $storagetype -Location $oldOsdisk.Location -SourceResourceId $snapshot.Id -CreateOption Copy
-		Write-Verbose -Message 'Creating new disk...'
-		$newDisk = New-AzureRmDisk -Disk $diskconf -ResourceGroupName $resourceGroup -DiskName "$($vm.Name)-$((New-Guid).ToString())"
-
-		# Set the VM configuration to point to the new disk
-		$null = Set-AzureRmVMOSDisk -VM $vm -ManagedDiskId $newDisk.Id -Name $newDisk.Name
-
-		# Update the VM with the new OS disk
-		Write-Verbose -Message 'Updating VM...'
-		$null = Update-AzureRmVM -ResourceGroupName $resourceGroup -VM $vm 
-
-		# Start the VM 
-		Write-Verbose -Message 'Starting VM...'
-		$null = Start-AzureRmVM -Name $vm.Name -ResourceGroupName $resourceGroup
-
-		if ($RemoveOriginalDisk.IsPresent) {
-			if ($PSCmdlet.ShouldProcess("Disk $($oldOsDisk.Name)", 'Remove')) {
-				$null = Remove-AzureRmDisk -ResourceGroupName $ResourceGroup -DiskName $oldOsDisk.Name
-			}
-		}
-	}
+	Get-AzSnapshot -ResourceGroupName $ResourceGroupName | Where-Object { $_.Name -match "^$VMName-" }
 }

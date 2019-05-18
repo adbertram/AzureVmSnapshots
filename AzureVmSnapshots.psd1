@@ -6,6 +6,7 @@
 	CompanyName       = 'TechSnips, LLC'
 	Copyright         = '(c) 2019 TechSnips, LLC. All rights reserved.'
 	Description       = 'A small PowerShell module to create and restore Azure VMs.'
+	RequiredModules   = 'Az'
 	FunctionsToExport = '*'
 	CmdletsToExport   = '*'
 	VariablesToExport = '*'

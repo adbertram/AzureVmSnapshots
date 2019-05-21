@@ -10,14 +10,15 @@ function New-AzVmSnapshot {
 		[ValidateNotNullOrEmpty()]
 		[string]$ResourceGroupName
 	)
- 
+	
+	$jobs = @()
 	foreach ($name in $VMName) {
 		$scriptBlock = {
 			param($ResourceGroupName, $VmName)
 
 			$ErrorActionPreference = 'Stop'
 
-			$snapshotName = "$VMName-$(Get-Date -UFormat '%Y%m%d%H%M%S')"
+			$snapshotName = "AzVmSnapshot-$VMName-$(Get-Date -UFormat '%Y%m%d%H%M%S')"
 
 			$vm = Get-AzVm -ResourceGroup $ResourceGroupName -Name $VmName
 			$stopParams = @{
@@ -44,7 +45,6 @@ function New-AzVmSnapshot {
 				}
 			}
 		}
-		$jobs = @()
 		$jobs += Start-Job -ScriptBlock $scriptBlock -ArgumentList @($ResourceGroupName, $name)
 	}
 	Write-Verbose -Message 'Executed all snapshot operations. Waiting on jobs to finish...'

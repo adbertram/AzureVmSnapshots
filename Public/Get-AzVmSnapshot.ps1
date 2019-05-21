@@ -4,22 +4,19 @@ function Get-AzVmSnapshot {
 	(
 		[Parameter(Mandatory)]
 		[ValidateNotNullOrEmpty()]
-		[string]$VmName,
- 
-		[Parameter(Mandatory)]
+		[string]$ResourceGroupName,
+
+		[Parameter()]
 		[ValidateNotNullOrEmpty()]
-		[string]$ResourceGroupName
+		[string]$VmName
 	)
  
 	$ErrorActionPreference = 'Stop'
+
+	$whereFilter = { $_.Name -match '^AzVmSnapshot' }
+	if ($PSBoundParameters.ContainsKey('VmName')) {
+		$whereFilter = 	{ $_.Name -match "^AzVmSnapshot-$VMName-" }
+	}
  
-	## Find the VM
-	$vm = Get-AzVM -Name $VmName -ResourceGroupName $ResourceGroupName
- 
-	## Find the OS disk on the VM to get the storage type
-	$osDiskName = $vm.StorageProfile.OsDisk.name
-	$oldOsDisk = Get-AzDisk -Name $osDiskName -ResourceGroupName $ResourceGroupName
-	$storageType = $oldOsDisk.sku.name
- 
-	Get-AzSnapshot -ResourceGroupName $ResourceGroupName | Where-Object { $_.Name -match "^$VMName-" }
+	Get-AzSnapshot -ResourceGroupName $ResourceGroupName | Where-Object -FilterScript $whereFilter
 }

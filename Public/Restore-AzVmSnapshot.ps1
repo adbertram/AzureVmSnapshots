@@ -32,7 +32,8 @@ function Restore-AzVmSnapshot {
                 throw "Could not find snapshot."
             }
         } else {
-            $vmName = ($Snapshot.Name -split 'AzVmSnapshot-')[1]
+            $prefixLen = "AzVmSnapshot-".Length
+            $vmName = $Snapshot.Name.substring($prefixLen, $Snapshot.Name.LastIndexOf('-') - $prefixLen)
             $ResourceGroupName = $Snapshot.ResourceGroupName
             $vm = Get-AzVM -Name $VmName -ResourceGroupName $ResourceGroupName
         }
